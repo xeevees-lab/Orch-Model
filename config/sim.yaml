@@ -1,0 +1,119 @@
+# Simulator parameters.
+#
+# These are modelling assumptions, not measurements. They are here in
+# one file so you can tune them live during a demo and defend them
+# when asked where a number came from.
+
+clock:
+  tick_minutes: 1          # one tick advances the sim clock by this much
+  speed: 4                 # ticks per real second at 1x
+  start_day: 1             # festival day the sim opens on
+  start_hour: 6
+
+cohort:
+  size: 250                # people per cohort - the unit we simulate
+  # Minutes spent at a venue once through the queue.
+  dwell_min: 25
+  dwell_spread: 10
+  # Fraction of arrivals that come from outside the city and need a room.
+  out_of_town_share: 0.18
+  # Effective door-to-door speed by mode, km/h, used for travel times.
+  speed_kph:
+    walk: 4.2
+    rail: 28.0
+    metro: 24.0
+    bus: 12.0
+    road: 16.0
+  # Distance below which people just walk.
+  walk_threshold_km: 1.6
+
+demand:
+  # Shape of darshan arrivals across the day. Index is hour, value is
+  # relative weight. Evening peak is real and pronounced.
+  hourly_weights:
+    6: 0.4
+    7: 0.6
+    8: 0.7
+    9: 0.8
+    10: 0.9
+    11: 1.0
+    12: 0.9
+    13: 0.8
+    14: 0.8
+    15: 0.9
+    16: 1.1
+    17: 1.4
+    18: 1.8
+    19: 2.0
+    20: 1.9
+    21: 1.6
+    22: 1.1
+    23: 0.7
+  # Random multiplier applied per tick so the stream is not flat.
+  noise: 0.15
+
+pricing:
+  # Nightly price responds to zone occupancy. This is what makes the
+  # "higher costs" issue in the PS visible.
+  base_multiplier: 1.0
+  surge_at_occupancy: 0.75   # surge begins above this occupancy
+  max_multiplier: 3.2
+
+observation:
+  # The platform never sees ground truth. These control how noisy the
+  # emitted telemetry is, so forecast error is a real thing you measure.
+  count_noise: 0.06
+  missing_rate: 0.02
+  telemetry_every_ticks: 1
+  inventory_every_ticks: 5
+
+incentives:
+  # Fraction of a targeted cohort that accepts a diversion offer.
+  base_uptake: 0.22
+  # Uptake rises with the size of the offer, saturating.
+  max_uptake: 0.55
+
+# --- The seven PS scenarios, injectable at runtime -------------------
+scenarios:
+  hotel_saturation:
+    label: Hotel saturation
+    description: Demand floods the zones nearest the main pandals.
+    params: { zone_bias: 4.0, duration_min: 240 }
+
+  transport_congestion:
+    label: Transport congestion
+    description: A rail corridor loses most of its capacity.
+    params: { mode: rail, capacity_factor: 0.35, duration_min: 180 }
+
+  demand_spike:
+    label: Sudden demand spike
+    description: Unregistered walk-ins arrive on top of the forecast.
+    params: { extra_visitors: 30000, over_min: 90 }
+
+  venue_capacity:
+    label: Venue capacity limit
+    description: A pandal's darshan throughput drops.
+    params: { service_factor: 0.4, duration_min: 150 }
+
+  last_mile:
+    label: Last-mile failure
+    description: Station access near a venue is cut, forcing long walks.
+    params: { access_factor: 0.15, duration_min: 120 }
+
+  uneven_distribution:
+    label: Uneven visitor distribution
+    description: Everyone converges on one immersion point.
+    params: { focus_share: 0.7, duration_min: 300 }
+
+  schedule_change:
+    label: Schedule change
+    description: A procession start time moves at short notice.
+    params: { shift_min: 90 }
+
+venue:
+  # Queue length, as a multiple of venue capacity, at which people
+  # stop joining. Real crowds divert or give up long before a queue
+  # becomes infinite.
+  balk_at_queue_multiple: 1.5
+  # Of those who balk with nowhere better to go, the share that goes home.
+  abandon_share: 0.35

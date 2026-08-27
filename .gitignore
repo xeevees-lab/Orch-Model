@@ -1,18 +1,14 @@
-# Data — regenerate with the ETL, never commit
 data/
 *.osm.pbf
 *.pmtiles
 *.zip
-
-# Python
 .venv/
 __pycache__/
 *.pyc
-
-# Secrets and local config
 .env
-*.local
-
-# Editor
-.vscode/
-.idea/
+node_modules/
+desktop.ini
+manager-console/dist/
+manager-console/public/*.pmtiles
+attendee_app/build/
+attendee_app/.dart_tool/

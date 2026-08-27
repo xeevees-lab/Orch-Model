@@ -1,0 +1,184 @@
+# Mumbai rail and metro lines.
+#
+# Station COORDINATES are not listed here on purpose - they are pulled
+# from mumbai.osm.pbf by name, so nothing is hand-typed and wrong.
+# What is hand-authored is the line ORDER, the headways and the
+# per-train capacity. Those are the numbers to defend.
+#
+# Capacity note: Mumbai locals run far above seated capacity. 2500 is
+# a crush-load figure for a 12-car rake, which is the honest number for
+# a visarjan evening. Metro rakes are ~1100.
+#
+# 04_load_rail.py reports every station it could not match. Expect a
+# few - fix them by adding the OSM spelling to `aliases`.
+
+lines:
+  - id: wr_local
+    name: Western Line
+    mode: rail
+    capacity_per_vehicle: 2500
+    headway_peak_min: 3
+    headway_offpeak_min: 6
+    stations:
+      - Churchgate
+      - Marine Lines
+      - Charni Road
+      - Grant Road
+      - Mumbai Central
+      - Mahalaxmi
+      - Lower Parel
+      - Prabhadevi
+      - Dadar
+      - Matunga Road
+      - Mahim Junction
+      - Bandra
+      - Khar Road
+      - Santacruz
+      - Vile Parle
+      - Andheri
+      - Jogeshwari
+      - Ram Mandir
+      - Goregaon
+      - Malad
+      - Kandivali
+      - Borivali
+      - Dahisar
+    aliases:
+      Prabhadevi: [Elphinstone Road]
+      Mahim Junction: [Mahim]
+      Santacruz: [Santa Cruz]
+
+  - id: cr_local
+    name: Central Line
+    mode: rail
+    capacity_per_vehicle: 2500
+    headway_peak_min: 3
+    headway_offpeak_min: 7
+    stations:
+      - Chhatrapati Shivaji Maharaj Terminus
+      - Masjid
+      - Sandhurst Road
+      - Byculla
+      - Chinchpokli
+      - Currey Road
+      - Parel
+      - Dadar
+      - Matunga
+      - Sion
+      - Kurla
+      - Vidyavihar
+      - Ghatkopar
+      - Vikhroli
+      - Kanjurmarg
+      - Bhandup
+      - Nahur
+      - Mulund
+    aliases:
+      Chhatrapati Shivaji Maharaj Terminus: [CSMT, Chhatrapati Shivaji Terminus, Bombay VT]
+
+  - id: hr_local
+    name: Harbour Line
+    mode: rail
+    capacity_per_vehicle: 2000
+    headway_peak_min: 5
+    headway_offpeak_min: 12
+    stations:
+      - Chhatrapati Shivaji Maharaj Terminus
+      - Masjid
+      - Sandhurst Road
+      - Dockyard Road
+      - Reay Road
+      - Cotton Green
+      - Sewri
+      - Wadala Road
+      - Guru Tegh Bahadur Nagar
+      - Chunabhatti
+      - Kurla
+      - Tilak Nagar
+      - Chembur
+      - Govandi
+      - Mankhurd
+    aliases:
+      Chhatrapati Shivaji Maharaj Terminus: [CSMT, Chhatrapati Shivaji Terminus]
+      Guru Tegh Bahadur Nagar: [GTB Nagar]
+      Wadala Road: [Wadala]
+
+  - id: metro_1
+    name: Metro Line 1
+    mode: metro
+    capacity_per_vehicle: 1100
+    headway_peak_min: 4
+    headway_offpeak_min: 8
+    stations:
+      - Versova
+      - D N Nagar
+      - Azad Nagar
+      - Andheri
+      - Western Express Highway
+      - Chakala
+      - Airport Road
+      - Marol Naka
+      - Saki Naka
+      - Asalpha
+      - Jagruti Nagar
+      - Ghatkopar
+    aliases:
+      D N Nagar: [DN Nagar]
+
+  - id: metro_2a
+    name: Metro Line 2A
+    mode: metro
+    capacity_per_vehicle: 1100
+    headway_peak_min: 5
+    headway_offpeak_min: 10
+    stations:
+      - Dahisar East
+      - Anand Nagar
+      - Kandarpada
+      - Mandapeshwar
+      - Eksar
+      - Borivali West
+      - Pahadi Eksar
+      - Kandivali West
+      - Dahanukarwadi
+      - Valnai
+      - Malad West
+      - Lower Malad
+      - Bangur Nagar
+      - Goregaon West
+      - Oshiwara
+      - Lower Oshiwara
+      - D N Nagar
+
+  - id: metro_7
+    name: Metro Line 7
+    mode: metro
+    capacity_per_vehicle: 1100
+    headway_peak_min: 5
+    headway_offpeak_min: 10
+    stations:
+      - Dahisar East
+      - Ovaripada
+      - Rashtriya Udyan
+      - Devipada
+      - Magathane
+      - Poisar
+      - Akurli
+      - Kurar
+      - Dindoshi
+      - Aarey
+      - Goregaon East
+      - Jogeshwari East
+      - Gundavali
+
+# Interchange walking links between co-located stations on different
+# lines. Without these the twin cannot move anyone between lines.
+interchanges:
+  - [Dadar, Dadar]
+  - [Kurla, Kurla]
+  - [Andheri, Andheri]
+  - [Ghatkopar, Ghatkopar]
+  - [Chhatrapati Shivaji Maharaj Terminus, Chhatrapati Shivaji Maharaj Terminus]
+
+# Peak window used when deciding which headway applies.
+peak_hours: [7, 11, 17, 22]
