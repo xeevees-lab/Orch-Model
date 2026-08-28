@@ -97,6 +97,12 @@ class Twin:
         # node_id -> inflow rate we predicted for the step just gone.
         # Same units as the observation it is scored against.
         self._predicted_inflow: dict[int, float] = {}
+        self.corridors: dict[str, dict] = {}
+        self.paths: dict[int, list] = {}
+        self.zone_share: dict[str, float] = {}
+        self.corridor_board: list[dict] = []
+        self.board_rate: dict[int, float] = {}
+        self._corridor_prev: dict[str, float] = {}
 
     # ---------------------------------------------------------- setup
 
@@ -167,6 +173,135 @@ class Twin:
 
     async def live(self, node_id: int) -> dict:
         return await self.redis.hgetall(f"node:{node_id}") or {}
+
+
+    # ---------------------------------------------------------- corridors
+
+    def load_corridors(self):
+        """Corridor definitions and the zone -> venue lookup, read once."""
+        with db.connect() as conn:
+            for r in conn.execute(
+                text(
+                    """
+                    SELECT corridor_id, name, mode, kind, capacity_ppm
+                    FROM corridors
+                    """
+                )
+            ).mappings():
+                self.corridors[r["corridor_id"]] = dict(r)
+
+            for r in conn.execute(
+                text(
+                    "SELECT zone_id, node_id, corridor_id, share "
+                    "FROM corridor_paths"
+                )
+            ).mappings():
+                self.paths.setdefault(r["node_id"], []).append(
+                    (r["zone_id"], r["corridor_id"], float(r["share"]))
+                )
+
+            # How demand for a venue splits across origin zones, by room
+            # supply. People come from where the beds are.
+            rows = conn.execute(
+                text(
+                    "SELECT zone_id, rooms_total FROM zones "
+                    "WHERE rooms_total > 0"
+                )
+            ).all()
+        total = sum(r[1] for r in rows) or 1
+        self.zone_share = {r[0]: r[1] / total for r in rows}
+        log.info(
+            "corridors: %d defined, %d venues with paths",
+            len(self.corridors), len(self.paths),
+        )
+
+    async def project_corridors(self, now):
+        """Push forecast venue demand back onto the network.
+
+        A corridor's load is the sum, across every venue it serves, of
+        that venue's inbound rate multiplied by the share of journeys
+        that use this corridor. Crude compared with a full assignment,
+        but it is the right order of magnitude and it runs in
+        milliseconds.
+        """
+        if not self.corridors:
+            return
+
+        load: dict[str, float] = {}
+        for nid, series in self.forecasts.items():
+            if not series:
+                continue
+            # Inbound rate over the next half hour, people per minute.
+            window = series[: max(1, 30 // STEP_MIN)]
+            arrivals = sum(
+                max(s["queue"] - (series[0]["queue"] if i else 0), 0)
+                for i, s in enumerate(window)
+            )
+            rate = max(
+                float(self.board_rate.get(nid, 0)),
+                arrivals / max(len(window) * STEP_MIN, 1),
+            )
+            if rate <= 0:
+                continue
+            for zone_id, cid, share in self.paths.get(nid, []):
+                zshare = self.zone_share.get(zone_id, 0)
+                if zshare <= 0:
+                    continue
+                load[cid] = load.get(cid, 0.0) + rate * zshare * share
+
+        rows, board = [], []
+        for cid, meta in self.corridors.items():
+            flow = load.get(cid, 0.0)
+            cap = float(meta["capacity_ppm"]) or 1.0
+            pi = flow / cap
+
+            # How long until it saturates, if the trend continues.
+            prev = self._corridor_prev.get(cid)
+            tts = None
+            if pi >= 1.0:
+                tts = 0
+            elif prev is not None and flow > prev:
+                growth = (flow - prev) / max(TICK_SECONDS / 60.0, 0.01)
+                if growth > 0:
+                    tts = round((cap - flow) / growth)
+            self._corridor_prev[cid] = flow
+
+            board.append({
+                "corridor_id": cid,
+                "name": meta["name"],
+                "mode": meta["mode"],
+                "kind": meta["kind"],
+                "flow_ppm": round(flow, 1),
+                "capacity_ppm": round(cap, 1),
+                "pressure_index": round(pi, 3),
+                "tts_min": tts,
+                "band": ("critical" if pi >= 1.0
+                         else "warning" if pi >= 0.7 else "ok"),
+            })
+            rows.append({
+                "ts": now, "corridor_id": cid, "flow": round(flow, 2),
+                "pi": round(pi, 3), "tts": tts,
+            })
+
+        board.sort(key=lambda r: (
+            r["tts_min"] if r["tts_min"] is not None else 10_000,
+            -r["pressure_index"],
+        ))
+        self.corridor_board = board
+
+        if rows:
+            with db.begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO corridor_state
+                            (ts, corridor_id, flow_ppm, pressure_index,
+                             tts_min, is_forecast)
+                        VALUES (:ts, :corridor_id, :flow, :pi, :tts, false)
+                        """
+                    ),
+                    rows,
+                )
 
     # ---------------------------------------------------------- scoring
 
@@ -260,6 +395,7 @@ class Twin:
                     tts = i * STEP_MIN
 
             predicted_next[nid] = first_rate or 0.0
+            self.board_rate[nid] = base_inflow
             self.forecasts[nid] = series
 
             queue_h_now = queue / (rate * 60.0)
@@ -291,6 +427,7 @@ class Twin:
 
         self._predicted_inflow = predicted_next
         await self.project_zones(now)
+        await self.project_corridors(now)
 
         # Shortest fuse first; among equals, worst pressure first.
         board.sort(key=lambda r: (
@@ -392,6 +529,7 @@ async def startup():
     twin.redis = aioredis.from_url(S.REDIS_URL, decode_responses=True)
     twin.load_reference()
     twin.learn_hour_profile()
+    twin.load_corridors()
 
     async def loop():
         while True:
@@ -430,6 +568,17 @@ def zone_pressure():
         twin.zone_forecasts.values(),
         key=lambda r: (r["tts_min"] if r["tts_min"] is not None else 10_000),
     )
+
+
+@app.get("/pressure/corridors")
+def corridor_pressure(band: str | None = Query(None), mode: str | None = None):
+    """Which routes into the event are filling up."""
+    rows = twin.corridor_board
+    if band:
+        rows = [r for r in rows if r["band"] == band]
+    if mode:
+        rows = [r for r in rows if r["mode"] == mode]
+    return rows
 
 
 @app.get("/forecast/{node_id}")
